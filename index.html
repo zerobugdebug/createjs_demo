@@ -27,14 +27,18 @@
             stage.mouseMoveOutside = true; // keep tracking the mouse even when it leaves the canvas
 
             // load the source image:
+            fpsLabel = new createjs.Text("-- fps", "bold 36px Arial", "#000");
+            stage.addChild(fpsLabel);
+            fpsLabel.x = 1000;
+            fpsLabel.y = 0;
 
 
-
-            var templateCard = new Image();
-            templateCard.src = "images/card_template_big.png";
-            templateCard.onload = handleImageLoad;
-            console.log(templateCard);
-
+            for (i = 0; i < 25; i++) {
+                var templateCard = new Image();
+                templateCard.src = "images/card_template_big.png";
+                templateCard.onload = handleImageLoad;
+                console.log(templateCard);
+            }
 
 
         }
@@ -84,21 +88,21 @@
 
             container.scale = container.originalScale = 0.4;
 
-            textSpeed = new createjs.Text("12", "36px Impact", "#0FF");
+            textSpeed = new createjs.Text(Math.round(Math.random() * 15) + 1, "36px Impact", "#0FF");
             textSpeed.x = 40;
             textSpeed.y = 43;
             textSpeed.textAlign = "center"
             textSpeed.textBaseline = "middle"
             container.addChild(textSpeed);
 
-            textPower = new createjs.Text("22", "36px Impact", "#0F0");
+            textPower = new createjs.Text(Math.round(Math.random() * 25) + 1, "36px Impact", "#0F0");
             textPower.x = 170;
             textPower.y = 352;
             textPower.textAlign = "center"
             textPower.textBaseline = "middle"
             container.addChild(textPower);
 
-            textDefence = new createjs.Text("15", "36px Impact", "#F00");
+            textDefence = new createjs.Text(Math.round(Math.random() * 50) + 1, "36px Impact", "#F00");
             textDefence.x = 235;
             textDefence.y = 352;
             textDefence.textAlign = "center"
@@ -125,14 +129,10 @@
                     x: this.parent.x - evt.stageX,
                     y: this.parent.y - evt.stageY
                 };
+                update = true;
             });
 
-            fpsLabel = new createjs.Text("-- fps", "bold 36px Arial", "#000");
-            stage.addChild(fpsLabel);
-            fpsLabel.x = 0;
-            fpsLabel.y = 0;
 
-            container.cache(bitmapCard.x, bitmapCard.y, bitmapCard.image.width, bitmapCard.image.height)
 
             // the pressmove event is dispatched when the mouse moves after a mousedown on the target until the mouse is released.
             bitmapCard.on("pressmove", function(evt) {
@@ -157,18 +157,41 @@
                 this.parent.scale = this.parent.originalScale;
                 update = true;
             });
+            container.x = Math.random() * 1500
+            container.y = Math.random() * 800
+            container.xSpeed = Math.random() * 2 - 4
+            container.ySpeed = Math.random() * 2 - 4
+            container.rotation = Math.random() * 360
+            container.regX = bitmapCard.image.width / 2 * 0.2
+            container.regY = bitmapCard.image.height / 2 * 0.2
+            container.rotationSpeed = Math.random() * 10 - 5
             stage.addChild(container);
-
+            container.cache(bitmapCard.x, bitmapCard.y, bitmapCard.image.width * 0.2, bitmapCard.image.height * 0.2)
+            createjs.Ticker.framerate = 30;
             createjs.Ticker.addEventListener("tick", tick);
         }
 
         function tick(event) {
             // this set makes it so the stage only re-renders when an event handler indicates a change has happened.
             fpsLabel.text = Math.round(createjs.Ticker.getMeasuredFPS()) + " fps";
-            if (update) {
-                update = false; // only update once
-                stage.update(event);
+            var l = stage.numChildren;
+
+            // iterate through all the children and move them according to their velocity:
+
+            //            if (update) {
+            //                update = false; // only update once
+            //                stage.update(event);
+            //            } else {
+            for (var i = 1; i < l; i++) {
+                var cont = stage.getChildAt(i);
+                cont.x += cont.xSpeed
+                if (cont.x > 1450 || cont.x < 50) cont.xSpeed = -cont.xSpeed
+                cont.y += cont.ySpeed
+                if (cont.y > 750 || cont.y < 50) cont.ySpeed = -cont.ySpeed
+                cont.rotation += cont.rotationSpeed
             }
+            stage.update(event);
+            //           }
         }
     </script>
 </head>
