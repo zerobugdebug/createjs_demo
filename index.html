@@ -1,39 +1,214 @@
 <!doctype html>
 <html>
-  <head>
+
+<head>
     <title>Websocket chat</title>
-  </head>
-  <body>
-<input id="input" type="text" />
-<button onclick="send()">Send</button>
-<pre id="output"></pre>
-<script>
-    var input = document.getElementById("input");
-    var output = document.getElementById("output");
-    //var socket = new WebSocket("ws://gfp-game-weba01:8080/ws");
-    var socket = new WebSocket("ws://localhost:8080/ws");
+    <script src="https://code.createjs.com/1.0.0/createjs.min.js"></script>
+    <script id="editable">
+        var canvas, stage;
 
-    socket.onopen = function () {
-        output.innerHTML += "Status: Connected\n";
-    };
+        var mouseTarget; // the display object currently under the mouse, or being dragged
+        var dragStarted; // indicates whether we are currently in a drag operation
+        var offset;
+        var update = true;
 
-    socket.onmessage = function (e) {
-        output.innerHTML += "Server: " + e.data + "\n";
-    };
+        function init() {
+            //examples.showDistractor();
+            // create stage and point it to the canvas:
+            canvas = document.getElementById("playField");
+            stage = new createjs.Stage(canvas);
+            console.log(canvas);
+            console.log(stage);
+            // enable touch interactions if supported on the current device:
+            createjs.Touch.enable(stage);
 
-    socket.onclose = function(e) {
-    console.log('Socket is closed. Reconnect will be attempted in 1 second.', e.reason);
-  };
+            // enabled mouse over / out events
+            stage.enableMouseOver(10);
+            stage.mouseMoveOutside = true; // keep tracking the mouse even when it leaves the canvas
 
-  socket.onerror = function(err) {
-    console.error('Socket encountered error: ', err.message, 'Closing socket');
-    socket.close();
-  };
+            // load the source image:
 
-    function send() {
-        socket.send(input.value);
-        input.value = "";
-    }
-</script>
+
+
+            var templateCard = new Image();
+            templateCard.src = "images/card_template_big.png";
+            templateCard.onload = handleImageLoad;
+            console.log(templateCard);
+
+
+
+        }
+
+        function stop() {
+            createjs.Ticker.removeEventListener("tick", tick);
+        }
+
+        function handleImageLoad(event) {
+            var templateCard = event.target;
+            var bitmapCard;
+            var container = new createjs.Container();
+            container.width = templateCard.width;
+            container.height = templateCard.height;
+            console.log(container);
+
+            var characterImage = new Image();
+            characterImage.src = "images/char002_big.png";
+            console.log(characterImage);
+            //characterImage.width
+
+            bitmapCharacter = new createjs.Bitmap(characterImage);
+            container.addChild(bitmapCharacter);
+
+            bitmapCharacter.x = 5;
+            bitmapCharacter.y = 5;
+
+            bitmapCharacter.scale = bitmapCharacter.originalScale = 1.5;
+
+            bitmapCard = new createjs.Bitmap(templateCard);
+            container.addChild(bitmapCard);
+
+            bitmapCard.x = 0;
+            bitmapCard.y = 0;
+
+            //bitmapCard.rotation = 360 * Math.random() | 0;
+            //bitmapCard.regX = bitmapCard.image.width / 2 | 0;
+            //bitmapCard.regY = bitmapCard.image.height / 2 | 0;
+            bitmapCard.scale = bitmapCard.originalScale = 0.2;
+            bitmapCard.name = "bmp_1";
+            bitmapCard.cursor = "pointer";
+
+            var hit = new createjs.Shape();
+            hit.graphics.beginFill("#000").drawRect(bitmapCard.x, bitmapCard.y, bitmapCard.image.width, bitmapCard.image.height);
+            //container.addChild(hit);
+            bitmapCard.hitArea = hit;
+
+            container.scale = container.originalScale = 0.4;
+
+            textSpeed = new createjs.Text("12", "36px Impact", "#0FF");
+            textSpeed.x = 40;
+            textSpeed.y = 43;
+            textSpeed.textAlign = "center"
+            textSpeed.textBaseline = "middle"
+            container.addChild(textSpeed);
+
+            textPower = new createjs.Text("22", "36px Impact", "#0F0");
+            textPower.x = 170;
+            textPower.y = 352;
+            textPower.textAlign = "center"
+            textPower.textBaseline = "middle"
+            container.addChild(textPower);
+
+            textDefence = new createjs.Text("15", "36px Impact", "#F00");
+            textDefence.x = 235;
+            textDefence.y = 352;
+            textDefence.textAlign = "center"
+            textDefence.textBaseline = "middle"
+            container.addChild(textDefence);
+
+            textName = new createjs.Text("Berghild, the Fire", "24px Arial", "#FF0");
+            textName.x = 35;
+            textName.y = 235;
+            textName.textAlign = "left"
+            textName.textBaseline = "middle"
+            container.addChild(textName);
+
+            textDescription = new createjs.Text("She was born in the fire and fire\nnever stopped following her. She\nwill burn everyone and everything", "14px Verdana", "#FFF");
+            textDescription.x = 30;
+            textDescription.y = 275;
+            textDescription.textAlign = "left"
+            textDescription.textBaseline = "middle"
+            container.addChild(textDescription);
+
+            bitmapCard.on("mousedown", function(evt) {
+                //this.parent.addChild(this);
+                this.parent.offset = {
+                    x: this.parent.x - evt.stageX,
+                    y: this.parent.y - evt.stageY
+                };
+            });
+
+            fpsLabel = new createjs.Text("-- fps", "bold 36px Arial", "#000");
+            stage.addChild(fpsLabel);
+            fpsLabel.x = 0;
+            fpsLabel.y = 0;
+
+            container.cache(bitmapCard.x, bitmapCard.y, bitmapCard.image.width, bitmapCard.image.height)
+
+            // the pressmove event is dispatched when the mouse moves after a mousedown on the target until the mouse is released.
+            bitmapCard.on("pressmove", function(evt) {
+                //console.log(evt)
+                this.parent.x = evt.stageX + this.parent.offset.x;
+                this.parent.y = evt.stageY + this.parent.offset.y;
+                //this.parent
+                //this.x += 10; //stage.mouseX - this.offset.x;
+                //this.y += 5 //stage.mouseY - this.offset.y;
+                // indicate that the stage should be updated on the next tick:
+                update = true;
+            });
+
+            bitmapCard.on("rollover", function(evt) {
+                console.log(this.scale);
+                console.log(this.originalScale);
+                this.parent.scale = this.parent.originalScale * 2;
+                update = true;
+            });
+
+            bitmapCard.on("rollout", function(evt) {
+                this.parent.scale = this.parent.originalScale;
+                update = true;
+            });
+            stage.addChild(container);
+
+            createjs.Ticker.addEventListener("tick", tick);
+        }
+
+        function tick(event) {
+            // this set makes it so the stage only re-renders when an event handler indicates a change has happened.
+            fpsLabel.text = Math.round(createjs.Ticker.getMeasuredFPS()) + " fps";
+            if (update) {
+                update = false; // only update once
+                stage.update(event);
+            }
+        }
+    </script>
+</head>
+
+<body onload="init();">
+    <div>
+        <canvas id="playField" width="1500" height="800"></canvas>
+    </div>
+
+    <input id="input" type="text" />
+    <button onclick="send()">Send</button>
+    <pre id="output"></pre>
+    <script>
+        var input = document.getElementById("input");
+        var output = document.getElementById("output");
+        //var socket = new WebSocket("ws://gfp-game-weba01:8080/ws");
+        var socket = new WebSocket("ws://localhost:8080/ws");
+
+        socket.onopen = function() {
+            output.innerHTML += "Status: Connected\n";
+        };
+
+        socket.onmessage = function(e) {
+            output.innerHTML += "Server: " + e.data + "\n";
+        };
+
+        socket.onclose = function(e) {
+            console.log('Socket is closed. Reconnect will be attempted in 1 second.', e.reason);
+        };
+
+        socket.onerror = function(err) {
+            console.error('Socket encountered error: ', err.message, 'Closing socket');
+            socket.close();
+        };
+
+        function send() {
+            socket.send(input.value);
+            input.value = "";
+        }
+    </script>
 </body>
+
 </html>

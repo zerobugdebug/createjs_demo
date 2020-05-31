@@ -419,5 +419,7 @@ func main() {
 
 	http.HandleFunc("/ws", serveWs)
 	http.HandleFunc("/", serveHome)
+	fs := http.FileServer(http.Dir("./images"))
+	http.Handle("/images/", http.StripPrefix("/images/", fs))
 	loggerInfo.Fatal(http.ListenAndServe(":8080", nil))
 }
