@@ -33,12 +33,12 @@
             fpsLabel.y = 0;
 
 
-            for (i = 0; i < 25; i++) {
-                var templateCard = new Image();
-                templateCard.src = "images/card_template_big.png";
-                templateCard.onload = handleImageLoad;
-                console.log(templateCard);
-            }
+            //            for (i = 0; i < 25; i++) {
+            var templateCard = new Image();
+            templateCard.src = "images/card_template_big.png";
+            templateCard.onload = handleImageLoad;
+            // console.log(templateCard);
+            //          }
 
 
         }
@@ -53,11 +53,11 @@
             var container = new createjs.Container();
             container.width = templateCard.width;
             container.height = templateCard.height;
-            console.log(container);
+            //console.log(container);
 
             var characterImage = new Image();
             characterImage.src = "images/char002_big.png";
-            console.log(characterImage);
+            //console.log(characterImage);
             //characterImage.width
 
             bitmapCharacter = new createjs.Bitmap(characterImage);
@@ -148,8 +148,8 @@
             });
 
             bitmapCard.on("rollover", function(evt) {
-                console.log(this.scale);
-                console.log(this.originalScale);
+                //console.log(this.scale);
+                //console.log(this.originalScale);
                 this.parent.scale = this.parent.originalScale * 2;
                 this.parent.stop = true
                 update = true;
@@ -216,29 +216,41 @@
         var input = document.getElementById("input");
         var output = document.getElementById("output");
         //var socket = new WebSocket("ws://gfp-game-weba01:8080/ws");
-        var socket = new WebSocket("ws://localhost:8080/ws");
+        var mySocket;
 
-        socket.onopen = function() {
+        const socketOnMessage = (event) => {
+            output.innerHTML += "Server: " + event.data + "\n";
+        };
+
+        const socketOnOpen = (event) => {
             output.innerHTML += "Status: Connected\n";
+            mySocket.send('{"operation":"getStartingHand","data":{"side":"owner","userId":"879879234"}}');
+            mySocket.send('{"operation":"getStartingHand","data":[{"name":"Ingegärd","power":"24","defense":"27","speed":"5","primaryAbility":"first-strike","secondaryAbility":"power-unity","secondaryAbilityParameters":[{"power":"3"},{"turn":"4"}],"description":"She\'s intrepid, affectionate, generous and perhaps a little too timid. This isn\'t surprising considering for someone with his position."},{"name":"Gudfinna ","power":"14","defense":"17","speed":"3","primaryAbility":"last-stand","secondaryAbility":"defense-unity","secondaryAbilityParameters":[{"turn":"4"}],"description":"She was born in a decent family in an important port. She lived free of worries until she was about 14 years old, but at that point things changed."},{"name":"Freystein","power":"19","defense":"30","speed":"4","primaryAbility":"full-power","secondaryAbility":"power-diversity","secondaryAbilityParameters":[{"power":"3"},{"turn":"4"}],"description":"He\'s funny, driven, reliable and perhaps a little too pompous. Which isn\'t out of the ordinary for someone with his position."},{"name":"Ingifast","power":"22","defense":"35","speed":"1","primaryAbility":"berserk","secondaryAbility":"powermania","secondaryAbilityParameters":[{"power":"2"},{"strike":"4"}],"description":"He is currently searching for a higher purpose. He feels like there\'s more than what we get to know in this world. Luckily he has great parents to support him."},{"name":"Svartbrand","power":"10","defense":"45","speed":"1","primaryAbility":"reckless","secondaryAbility":"defender","secondaryAbilityParameters":[],"description":"While haunted by memories of the past, he now works a small job with low pay. By doing so, he hopes to start life over on a good note and finally find friends he has never had."}]}');
         };
 
-        socket.onmessage = function(e) {
-            output.innerHTML += "Server: " + e.data + "\n";
-        };
+        const socketOnError = (event) => {
+            console.error('Socket encountered error: ', event.message, 'Closing socket');
+            mySocket.close();
+        }
 
-        socket.onclose = function(e) {
-            console.log('Socket is closed. Reconnect will be attempted in 1 second.', e.reason);
-        };
-
-        socket.onerror = function(err) {
-            console.error('Socket encountered error: ', err.message, 'Closing socket');
-            socket.close();
+        const socketOnClose = (event) => {
+            if (mySocket) {
+                console.log('Socket is closed. Trying to reconnect...', event.reason);
+                output.innerHTML += "Status: Reconnecting...\n";
+            }
+            mySocket = new WebSocket("ws://localhost:8080/ws");
+            mySocket.addEventListener('open', socketOnOpen);
+            mySocket.addEventListener('message', socketOnMessage);
+            mySocket.addEventListener('close', socketOnClose);
+            mySocket.addEventListener('error', socketOnError);
         };
 
         function send() {
-            socket.send(input.value);
+            mySocket.send(input.value);
             input.value = "";
         }
+
+        socketOnClose();
     </script>
 </body>
 

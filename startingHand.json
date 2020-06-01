@@ -1,0 +1,63 @@
+{
+    "result": "ok",
+    "data": [{
+        "name": "Ingegärd",
+        "power": "24",
+        "defense": "27",
+        "speed": "5",
+        "primaryAbility": "first-strike",
+        "secondaryAbility": "power-unity",
+        "secondaryAbilityParameters": [{
+            "power": "3"
+        }, {
+            "turn": "4"
+        }],
+        "description": "She's intrepid, affectionate, generous and perhaps a little too timid. This isn't surprising considering for someone with his position."
+    }, {
+        "name": "Gudfinna ",
+        "power": "14",
+        "defense": "17",
+        "speed": "3",
+        "primaryAbility": "last-stand",
+        "secondaryAbility": "defense-unity",
+        "secondaryAbilityParameters": [{
+            "turn": "4"
+        }],
+        "description": "She was born in a decent family in an important port. She lived free of worries until she was about 14 years old, but at that point things changed."
+    }, {
+        "name": "Freystein",
+        "power": "19",
+        "defense": "30",
+        "speed": "4",
+        "primaryAbility": "full-power",
+        "secondaryAbility": "power-diversity",
+        "secondaryAbilityParameters": [{
+            "power": "3"
+        }, {
+            "turn": "4"
+        }],
+        "description": "He's funny, driven, reliable and perhaps a little too pompous. Which isn't out of the ordinary for someone with his position."
+    }, {
+        "name": "Ingifast",
+        "power": "22",
+        "defense": "35",
+        "speed": "1",
+        "primaryAbility": "berserk",
+        "secondaryAbility": "powermania",
+        "secondaryAbilityParameters": [{
+            "power": "2"
+        }, {
+            "strike": "4"
+        }],
+        "description": "He is currently searching for a higher purpose. He feels like there's more than what we get to know in this world. Luckily he has great parents to support him."
+    }, {
+        "name": "Svartbrand",
+        "power": "10",
+        "defense": "45",
+        "speed": "1",
+        "primaryAbility": "reckless",
+        "secondaryAbility": "defender",
+        "secondaryAbilityParameters": [],
+        "description": "While haunted by memories of the past, he now works a small job with low pay. By doing so, he hopes to start life over on a good note and finally find friends he has never had."
+    }]
+}

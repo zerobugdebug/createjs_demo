@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"compress/flate"
+	"encoding/json"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -30,6 +34,7 @@ const (
 //var addr = flag.String("addr", "localhost:8080", "http service address")
 
 var upgrader = websocket.Upgrader{} // use default options
+//var upgrader = websocket.Upgrader{EnableCompression: true} // with Experimental Compression
 var loggerInfo = log.New(os.Stdout).WithDebug()
 
 //var connectionRabbitMQ *amqp.Connection
@@ -68,12 +73,20 @@ func initRabbitMQ() {
 }
 */
 
+func functionName() string {
+	pc := make([]uintptr, 15)
+	n := runtime.Callers(2, pc)
+	frames := runtime.CallersFrames(pc[:n])
+	frame, _ := frames.Next()
+	return frame.Function
+}
+
 func ping(ws *websocket.Conn) {
 	ticker := time.NewTicker(pingPeriod)
 	defer ticker.Stop()
 	for {
 		<-ticker.C
-		loggerInfo.Info("Sending ping")
+		loggerInfo.Debug("Sending ping")
 		if err := ws.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(writeWait)); err != nil {
 			loggerInfo.Error("ping:", err)
 			break
@@ -88,14 +101,14 @@ func internalError(ws *websocket.Conn, msg string, err error) {
 }
 
 func writeWebsocket(ws *websocket.Conn, chanMessage chan []byte) {
-	loggerInfo.Info("Writer started")
+	loggerInfo.Debug("Writer started")
 	for {
 		message := <-chanMessage
 		err := ws.WriteMessage(websocket.TextMessage, message)
 		if err != nil {
-			loggerInfo.Info("write:", err)
+			loggerInfo.Debug("write:", err)
 		}
-		loggerInfo.Infof("Sent to websocket: %s", message)
+		loggerInfo.Debugf("Sent to websocket: %s", message)
 	}
 }
 
@@ -110,25 +123,64 @@ func readWebsocket(ws *websocket.Conn, chanMessage chan []byte) {
 			loggerInfo.Error("read: ", err)
 			break
 		}
-		loggerInfo.Infof("Recv from websocket: %s", message)
-		chanMessage <- message
+		loggerInfo.Debugf("Recv from websocket: %s", message)
+		if json.Valid(message) {
+			loggerInfo.Debug("Valid JSON, sending to RabbitMQ")
+			chanMessage <- message
+		} else {
+			loggerInfo.Warn("Incorrect JSON!")
+		}
+
 	}
 }
 
 func publishRabbitMQ(chanRabbitMQ *amqp.Channel, chanMessage chan []byte) {
-	loggerInfo.Info("Publisher started")
-	message := <-chanMessage
-	err := chanRabbitMQ.Publish(
-		"main",              // exchange
-		"StartBattle.Start", // routing key
-		false,               // mandatory
-		false,               // immediate
-		amqp.Publishing{
-			ContentType: "text/plain",
-			Body:        []byte(message),
-		})
-	loggerInfo.Infof("Published to RabbitMQ: %s", message)
-	failOnError(err, "Failed to publish a message")
+	loggerInfo.Debug("Publisher started")
+	for {
+		//message := <-chanMessage
+		var message map[string]interface{}
+		var messageContentEncoding string = ""
+		if err := json.Unmarshal(<-chanMessage, &message); err != nil {
+			loggerInfo.Error("Can't parse JSON. Error: ", err)
+		}
+		//loggerInfo.Debug("Parsed JSON: ", message)
+		loggerInfo.Debug("Operation: ", message["operation"])
+		loggerInfo.Trace("Data: ", message["data"])
+		dataJSON, err := json.Marshal(message["data"])
+		if err != nil {
+			loggerInfo.Error("Can't convert data to JSON. Error: ", err)
+			continue
+		}
+
+		loggerInfo.Debug("Full data size: ", len(dataJSON))
+		if len(dataJSON) > 100 {
+			compressedData := new(bytes.Buffer)
+			compressor, _ := flate.NewWriter(compressedData, 5)
+			compressor.Write(dataJSON)
+			compressor.Close()
+			dataJSON = compressedData.Bytes()
+			messageContentEncoding = "deflate"
+			loggerInfo.Debug("Compressed data size: ", len(dataJSON))
+		}
+
+		//loggerInfo.Debug("Data in JSON: ", dataJSON)
+		routingKey := message["operation"].(string)
+		err = chanRabbitMQ.Publish(
+			"main",     // exchange
+			routingKey, // routing key
+			false,      // mandatory
+			false,      // immediate
+			amqp.Publishing{
+				ContentType:     "text/json",
+				ContentEncoding: messageContentEncoding,
+				Body:            dataJSON,
+			})
+		loggerInfo.Debugf("Published to RabbitMQ. Routing key: %s, payload: %s", routingKey, string(dataJSON))
+		if err != nil {
+			loggerInfo.Error("Failed to publish a message. Error: ", err)
+			break
+		}
+	}
 }
 
 /*func monitoringRabbitMQ(chanRabbitMQ *amqp.Channel, chanMessage chan []byte) {
@@ -138,7 +190,7 @@ func publishRabbitMQ(chanRabbitMQ *amqp.Channel, chanMessage chan []byte) {
 	}()
 
 	chanRabbitMQ.n
-	loggerInfo.Info("Publisher started")
+	loggerInfo.Debug("Publisher started")
 	message := <-chanMessage
 	err := chanRabbitMQ.Publish(
 		"main",              // exchange
@@ -149,12 +201,12 @@ func publishRabbitMQ(chanRabbitMQ *amqp.Channel, chanMessage chan []byte) {
 			ContentType: "text/plain",
 			Body:        []byte(message),
 		})
-	loggerInfo.Infof("Published to RabbitMQ: %s", message)
+	loggerInfo.Debugf("Published to RabbitMQ: %s", message)
 	failOnError(err, "Failed to publish a message")
 }
 */
 func consumeRabbitMQ(chanRabbitMQ *amqp.Channel, chanMessage chan []byte) {
-	loggerInfo.Info("Consumer started")
+	loggerInfo.Debug("Consumer started")
 
 	messagesRabbitMQ, err := chanRabbitMQ.Consume(
 		"WebsocketWorker", // queue
@@ -168,7 +220,7 @@ func consumeRabbitMQ(chanRabbitMQ *amqp.Channel, chanMessage chan []byte) {
 	failOnError(err, "Failed to register a consumer")
 
 	for d := range messagesRabbitMQ {
-		loggerInfo.Infof("Consumed from RabbitMQ: %s", d.Body)
+		loggerInfo.Debugf("Consumed from RabbitMQ: %s", d.Body)
 		chanMessage <- d.Body
 
 	}
@@ -180,40 +232,40 @@ func consumeRabbitMQ(chanRabbitMQ *amqp.Channel, chanMessage chan []byte) {
 
 /*
 func monitoredRabbitMQChannel(url string) (*amqp.Channel, error) {
-	loggerInfo.Info("Creating monitored RabbitMQ connection...")
+	loggerInfo.Debug("Creating monitored RabbitMQ connection...")
 	conn, err := amqp.Dial(url)
 	if err != nil {
 		return nil, err
 	}
-	loggerInfo.Info("RabbitMQ connection: ", conn)
+	loggerInfo.Debug("RabbitMQ connection: ", conn)
 
-	loggerInfo.Info("Creating monitored RabbitMQ channel...")
+	loggerInfo.Debug("Creating monitored RabbitMQ channel...")
 	ch, err := conn.Channel()
 
 	if err != nil {
 		return nil, err
 	}
 
-	loggerInfo.Info("RabbitMQ channel: ", ch)
+	loggerInfo.Debug("RabbitMQ channel: ", ch)
 
 	channel := ch
 	go func() {
 		for {
-			loggerInfo.Info("RabbitMQ channel monitoring started")
+			loggerInfo.Debug("RabbitMQ channel monitoring started")
 			reason, ok := <-channel.NotifyClose(make(chan *amqp.Error))
 			loggerInfo.Warnf("RabbitMQ channel closed. Reason: %v, ok: %v", reason, ok)
 			for {
-				loggerInfo.Info("Reconnecting RabbitMQ connection...")
+				loggerInfo.Debug("Reconnecting RabbitMQ connection...")
 				time.Sleep(3 * time.Second)
 				conn, err := amqp.Dial(url)
 				if err == nil {
-					loggerInfo.Info("RabbitMQ connection reconnected")
+					loggerInfo.Debug("RabbitMQ connection reconnected")
 					for {
-						loggerInfo.Info("Reconnecting RabbitMQ channel...")
+						loggerInfo.Debug("Reconnecting RabbitMQ channel...")
 						time.Sleep(3 * time.Second)
 						ch, err := conn.Channel()
 						if err == nil {
-							loggerInfo.Info("RabbitMQ channel reconnected")
+							loggerInfo.Debug("RabbitMQ channel reconnected")
 							channel = ch
 							break
 						}
@@ -231,30 +283,30 @@ func monitoredRabbitMQChannel(url string) (*amqp.Channel, error) {
 */
 
 func monitoredRabbitMQChannel(conn *amqp.Connection, pipe chan *amqp.Connection, id string) (*amqp.Channel, error) {
-	loggerInfo.Info(id, "- Creating monitored RabbitMQ channel...")
+	loggerInfo.Debug(id, "- Creating monitored RabbitMQ channel...")
 	ch, err := conn.Channel()
 
 	if err != nil {
 		return nil, err
 	}
 
-	//	loggerInfo.Info("RabbitMQ channel: ", ch)
+	//	loggerInfo.Debug("RabbitMQ channel: ", ch)
 
 	channel := ch
 	go func() {
 		for {
-			loggerInfo.Info(id, "- RabbitMQ channel monitoring started")
+			loggerInfo.Debug(id, "- RabbitMQ channel monitoring started")
 			reason, ok := <-channel.NotifyClose(make(chan *amqp.Error))
 			loggerInfo.Warnf("%v - RabbitMQ channel closed. Reason: %v, ok: %v", id, reason, ok)
 			//loggerInfo.Error("RabbitMQ connection from pipe: ", conn)
 			if ok {
 				for {
-					loggerInfo.Info(id, "- Reconnecting RabbitMQ channel...")
+					loggerInfo.Debug(id, "- Reconnecting RabbitMQ channel...")
 					time.Sleep(3 * time.Second)
 					conn := <-pipe
 					ch, err := conn.Channel()
 					if err == nil {
-						loggerInfo.Info(id, "- RabbitMQ channel reconnected")
+						loggerInfo.Debug(id, "- RabbitMQ channel reconnected")
 						channel = ch
 
 						//Non-blocking push new connection back to pipe to chain new connection to other RabbitMQ channels
@@ -266,11 +318,11 @@ func monitoredRabbitMQChannel(conn *amqp.Connection, pipe chan *amqp.Connection,
 						break
 					}
 					loggerInfo.Warnf("%v - Can't reconnect RabbitMQ channel. Error: %v", id, err)
-					//loggerInfo.Info("RabbitMQ connection: ", conn)
+					//loggerInfo.Debug("RabbitMQ connection: ", conn)
 				}
 
 			} else {
-				loggerInfo.Info(id, "- Internal close. Nothing to do.")
+				loggerInfo.Debug(id, "- Internal close. Nothing to do.")
 				break
 			}
 		}
@@ -279,35 +331,35 @@ func monitoredRabbitMQChannel(conn *amqp.Connection, pipe chan *amqp.Connection,
 }
 
 func monitoredRabbitMQConnection(url string, pipe chan *amqp.Connection, id string) (*amqp.Connection, error) {
-	loggerInfo.Info(id, "- Creating monitored RabbitMQ connection...")
+	loggerInfo.Debug(id, "- Creating monitored RabbitMQ connection...")
 	conn, err := amqp.Dial(url)
 	if err != nil {
 		return nil, err
 	}
-	//loggerInfo.Info("RabbitMQ connection: ", conn)
+	//loggerInfo.Debug("RabbitMQ connection: ", conn)
 
 	connection := conn
 	go func() {
 		for {
-			loggerInfo.Info(id, "- RabbitMQ connection monitoring started")
+			loggerInfo.Debug(id, "- RabbitMQ connection monitoring started")
 			reason, ok := <-connection.NotifyClose(make(chan *amqp.Error))
 			loggerInfo.Warnf("%v - RabbitMQ connection closed. Reason: %v, ok: %v", id, reason, ok)
 			if ok {
 				for {
-					loggerInfo.Info(id, "- Reconnecting RabbitMQ connection...")
+					loggerInfo.Debug(id, "- Reconnecting RabbitMQ connection...")
 					time.Sleep(3 * time.Second)
 					conn, err := amqp.Dial(url)
 					if err == nil {
-						loggerInfo.Info(id, "- RabbitMQ connection reconnected")
+						loggerInfo.Debug(id, "- RabbitMQ connection reconnected")
 						connection = conn
-						//loggerInfo.Info("Reconnected RabbitMQ connection: ", conn)
+						//loggerInfo.Debug("Reconnected RabbitMQ connection: ", conn)
 						pipe <- conn //Send new connection info to the pipe
 						break
 					}
 					loggerInfo.Warnf("%v - Can't reconnect RabbitMQ connection. Error: %v", id, err)
 				}
 			} else {
-				loggerInfo.Info(id, "- Internal close. Nothing to do.")
+				loggerInfo.Debug(id, "- Internal close. Nothing to do.")
 				break
 			}
 		}
@@ -351,9 +403,9 @@ func serveWs(w http.ResponseWriter, r *http.Request) {
 	}
 	defer publishChannelRabbitMQ.Close()
 
-	//loggerInfo.Info("channelRabbitMQ: ", channelRabbitMQ)
-	//loggerInfo.Info("*channelRabbitMQ: ", *channelRabbitMQ)
-	//loggerInfo.Info("&channelRabbitMQ: ", &channelRabbitMQ)
+	//loggerInfo.Debug("channelRabbitMQ: ", channelRabbitMQ)
+	//loggerInfo.Debug("*channelRabbitMQ: ", *channelRabbitMQ)
+	//loggerInfo.Debug("&channelRabbitMQ: ", &channelRabbitMQ)
 
 	//forever := make(chan bool)
 
@@ -374,16 +426,17 @@ func serveWs(w http.ResponseWriter, r *http.Request) {
 	//go pumpStdout(ws, outr, stdoutDone)
 	readWebsocket(ws, chanMesageFromWebsocket)
 
+	loggerInfo.Warn("Execution finished!")
 	//<-forever
 	/*
 		for {
 			_, message, err := ws.ReadMessage()
 			if err != nil {
-				loggerInfo.Info("read:", err)
+				loggerInfo.Debug("read:", err)
 				//break
 			}
-			loggerInfo.Infof("recv: %s", message)
-	*/ //loggerInfo.Infof("mt: %s", mt)
+			loggerInfo.Debugf("recv: %s", message)
+	*/ //loggerInfo.Debugf("mt: %s", mt)
 	/*
 		err = channelRabbitMQ.Publish(
 			"main",              // exchange
@@ -394,14 +447,14 @@ func serveWs(w http.ResponseWriter, r *http.Request) {
 				ContentType: "text/plain",
 				Body:        []byte(message),
 			})
-		loggerInfo.Infof(" [x] Sent %s", message)
+		loggerInfo.Debugf(" [x] Sent %s", message)
 		failOnError(err, "Failed to publish a message")
 	*/
 	//		err = c.WriteMessage(mt, d.Body)
 	//		if err != nil {
-	//			loggerInfo.Info("write:", err)
+	//			loggerInfo.Debug("write:", err)
 	//		}
-	//		loggerInfo.Infof("sent: %s", d.Body)
+	//		loggerInfo.Debugf("sent: %s", d.Body)
 
 	//		failOnError(err, "Failed to register a consumer")
 
