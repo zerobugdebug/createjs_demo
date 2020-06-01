@@ -129,7 +129,7 @@
                     x: this.parent.x - evt.stageX,
                     y: this.parent.y - evt.stageY
                 };
-                update = true;
+
             });
 
 
@@ -139,6 +139,7 @@
                 //console.log(evt)
                 this.parent.x = evt.stageX + this.parent.offset.x;
                 this.parent.y = evt.stageY + this.parent.offset.y;
+
                 //this.parent
                 //this.x += 10; //stage.mouseX - this.offset.x;
                 //this.y += 5 //stage.mouseY - this.offset.y;
@@ -150,11 +151,15 @@
                 console.log(this.scale);
                 console.log(this.originalScale);
                 this.parent.scale = this.parent.originalScale * 2;
+                this.parent.stop = true
                 update = true;
             });
 
             bitmapCard.on("rollout", function(evt) {
                 this.parent.scale = this.parent.originalScale;
+                this.parent.xSpeed = -(this.parent.x - evt.stageX) * 0.05
+                this.parent.ySpeed = -(this.parent.y - evt.stageY) * 0.05
+                this.parent.stop = false
                 update = true;
             });
             container.x = Math.random() * 1500
@@ -165,6 +170,7 @@
             container.regX = bitmapCard.image.width / 2 * 0.2
             container.regY = bitmapCard.image.height / 2 * 0.2
             container.rotationSpeed = Math.random() * 10 - 5
+            container.stop = false
             stage.addChild(container);
             container.cache(bitmapCard.x, bitmapCard.y, bitmapCard.image.width * 0.2, bitmapCard.image.height * 0.2)
             createjs.Ticker.framerate = 30;
@@ -184,11 +190,13 @@
             //            } else {
             for (var i = 1; i < l; i++) {
                 var cont = stage.getChildAt(i);
-                cont.x += cont.xSpeed
-                if (cont.x > 1450 || cont.x < 50) cont.xSpeed = -cont.xSpeed
-                cont.y += cont.ySpeed
-                if (cont.y > 750 || cont.y < 50) cont.ySpeed = -cont.ySpeed
-                cont.rotation += cont.rotationSpeed
+                if (!cont.stop) {
+                    cont.x += cont.xSpeed
+                    if (cont.x > 1450 || cont.x < 50) cont.xSpeed = -cont.xSpeed
+                    cont.y += cont.ySpeed
+                    if (cont.y > 750 || cont.y < 50) cont.ySpeed = -cont.ySpeed
+                    cont.rotation += cont.rotationSpeed
+                }
             }
             stage.update(event);
             //           }
